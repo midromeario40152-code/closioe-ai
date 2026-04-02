@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Micas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&display=swap');
+
+        
+        body {
+            font-family: 'Figtree', sans-serif;
+            background-color: #f8fafd;
+            color: #1f1f1f;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .sidebar-collapsed {
+            width: 68px !important;
+        }
+
+        .sidebar-collapsed .sidebar-text, 
+        .sidebar-collapsed .recent-label,
+        .sidebar-collapsed .search-box {
+            display: none;
+        }
+
+        .sidebar-item:hover {
+            background-color: #e9eef6;
+        }
+
+        .chat-container {
+            height: calc(100vh - 180px);
+            scrollbar-width: thin;
+            scrollbar-color: #c4c7c5 transparent;
+        }
+
+        .chat-container::-webkit-scrollbar { width: 6px; }
+        .chat-container::-webkit-scrollbar-thumb { background-color: #c4c7c5; border-radius: 10px; }
+
+        .input-area {
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: all 0.2s ease;
+        }
+
+        .input-area:focus-within {
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            background: #fff;
+        }
+
+        .gradient-text {
+            background: linear-gradient(90deg, #4285f4, #9b72cb, #d96570);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .loading-dots span { animation: blink 1.4s infinite both; }
+        .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes blink { 0% { opacity: 0.2; } 20% { opacity: 1; } 100% { opacity: 0.2; } }
+
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .modal-bg {
+            background-color: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(8px);
+        }
+
+        #modelMenu {
+            transform: translateY(10px);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #modelMenu.show {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .action-btn {
+            @apply p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-blue-600 transition-all text-xs flex items-center justify-center;
+        }
+
+        #selectionTooltip {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            background: #2563eb;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+            cursor: pointer;
+            animation: popIn 0.2s ease-out;
+            pointer-events: auto;
+        }
+
+        .lab-badge {
+            @apply ml-2 bg-amber-100 text-amber-700 text-[9px] px-1.5 py-0.5 rounded uppercase font-bold;
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .message-bubble {
+            max-width: 85%;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body class="flex h-screen">
+
+    <!-- Tooltip hỏi nhanh -->
+    <div id="selectionTooltip" onclick="handleSelectionAsk()">
+        <i class="fas fa-wand-magic-sparkles mr-1.5"></i> Hỏi Micas 4.5
+    </div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="w-64 bg-[#f0f4f9] flex flex-col items-start p-4 shrink-0 overflow-hidden relative z-20 shadow-sm border-r border-gray-100">
+        <button onclick="toggleSidebar()" class="mb-6 p-3 hover:bg-gray-200 rounded-full transition-colors">
+            <i class="fas fa-bars text-xl text-gray-600"></i>
+        </button>
+        
+        <button onclick="window.location.reload()" class="flex items-center space-x-3 p-4 w-full rounded-2xl bg-[#dde3ea] hover:bg-[#d0d7de] mb-4 transition-all">
+            <i class="fas fa-plus text-gray-700"></i>
+            <span class="sidebar-text font-medium text-gray-700 whitespace-nowrap">Cuộc trò chuyện mới</span>
+        </button>
+
+        <div class="search-box w-full px-2 mb-4">
+            <div class="relative">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                <input type="text" id="historySearch" oninput="filterHistory()" placeholder="Tìm lịch sử..." class="w-full bg-white border-none rounded-xl py-2 pl-8 pr-4 text-xs focus:ring-1 focus:ring-blue-300 outline-none">
+            </div>
+        </div>
+
+        <div class="flex-grow w-full overflow-y-auto px-1">
+            <p class="recent-label text-[10px] font-bold text-gray-400 mb-3 px-3 whitespace-nowrap uppercase tracking-[0.15em]">Gần đây</p>
+            <div id="historyList" class="space-y-1"></div>
+        </div>
+
+        <div class="w-full mt-auto pt-4 border-t border-gray-200 space-y-1">
+            <div onclick="showModal('helpModal')" class="sidebar-item flex items-center space-x-3 p-3 w-full rounded-full cursor-pointer transition-colors">
+                <i class="fas fa-circle-question text-gray-500"></i>
+                <span class="sidebar-text text-sm">Trợ giúp</span>
+            </div>
+            <div onclick="showModal('settingsModal')" class="sidebar-item flex items-center space-x-3 p-3 w-full rounded-full cursor-pointer transition-colors">
+                <i class="fas fa-gear text-gray-500"></i>
+                <span class="sidebar-text text-sm">Cài đặt</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col relative bg-white min-w-0">
+        <header class="flex justify-between items-center px-6 py-4">
+            <div class="text-xl font-medium text-gray-700 flex items-center">
+                Ecorsorl 
+                <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full ml-2 uppercase font-bold tracking-wider"></span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div id="activeModelBadge" class="hidden sm:flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
+                    <i id="badgeIcon" class="fas fa-graduation-cap text-blue-500 text-xs"></i>
+                    <span id="badgeText" class="text-xs font-medium text-gray-600">Học thức</span>
+                </div>
+                <div class="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold cursor-pointer shadow-sm">A</div>
+            </div>
+        </header>
+
+        <div id="chatWindow" class="chat-container flex-grow overflow-y-auto px-4 md:px-20 py-8 scroll-smooth">
+            <div id="welcomeScreen" class="flex flex-col items-center justify-center h-full text-center fade-in">
+                <h1 class="text-3xl md:text-5xl font-medium mb-4">
+                    <span class="gradient-text">Xin chào An!</span><br>
+                    <span class="text-gray-300">Hôm nay cậu muốn khám phá điều gì ?.</span>
+                </h1>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-12 w-full max-w-4xl px-4">
+                    <button onclick="quickPrompt('Giải bài tập toán này giúp tớ')" class="p-5 bg-[#f0f4f9] hover:bg-[#e1e6ed] rounded-3xl text-left transition group">
+                        <i class="fas fa-square-root-variable text-blue-500 text-lg mb-3"></i>
+                        <p class="text-sm font-medium">Giải bài tập</p>
+                    </button>
+                    <button onclick="quickPrompt('Tạo một đoạn mã Python đơn giản')" class="p-5 bg-[#f0f4f9] hover:bg-[#e1e6ed] rounded-3xl text-left transition group">
+                        <i class="fas fa-code text-orange-500 text-lg mb-3"></i>
+                        <p class="text-sm font-medium">Lập trình </p>
+                    </button>
+                    <button onclick="quickPrompt('Viết một bài văn ngắn về lòng biết ơn')" class="p-5 bg-[#f0f4f9] hover:bg-[#e1e6ed] rounded-3xl text-left transition group">
+                        <i class="fas fa-pen-nib text-purple-500 text-lg mb-3"></i>
+                        <p class="text-sm font-medium">Viết văn </p>
+                    </button>
+                    <button onclick="quickPrompt('Giải thích định luật Newton bằng ví dụ')" class="p-5 bg-[#f0f4f9] hover:bg-[#e1e6ed] rounded-3xl text-left transition group">
+                        <i class="fas fa-microscope text-green-500 text-lg mb-3"></i>
+                        <p class="text-sm font-medium">Khoa học</p>
+                    </button>
+                </div>
+            </div>
+            <div id="messages" class="space-y-8 max-w-4xl mx-auto hidden pb-10"></div>
+        </div>
+
+        <div class="px-4 md:px-20 pb-6 pt-2">
+            <div class="max-w-4xl mx-auto relative">
+                
+                <!-- Model Selector Menu -->
+                <div id="modelMenu" class="absolute bottom-full left-0 mb-4 bg-white border border-gray-200 rounded-3xl p-2 shadow-2xl w-64 z-50">
+                    <div class="grid grid-cols-1 gap-1">
+                        <button onclick="selectModel('Học thức', 'fa-graduation-cap', 'blue')" class="flex items-center gap-3 p-3 hover:bg-blue-50 rounded-2xl transition group text-left">
+                            <i class="fas fa-graduation-cap text-blue-500 w-5"></i>
+                            <div>
+                                <p class="text-sm font-bold text-gray-700">Học thức</p>
+                                <p class="text-[10px] text-gray-500"Mircosl phiên bản thử nghiệm</p>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="imagePreviewContainer" class="hidden mb-3 p-2 bg-white border rounded-2xl flex items-center gap-3 shadow-sm fade-in">
+                    <img id="imagePreview" src="" class="h-14 w-14 object-cover rounded-xl border">
+                    <span class="text-xs font-medium text-gray-500">Ảnh đã chọn</span>
+                    <button onclick="clearImage()" class="ml-auto p-2 text-gray-300 hover:text-red-500 transition-colors"><i class="fas fa-times-circle"></i></button>
+                </div>
+
+                <div class="input-area flex items-center p-1.5 rounded-[26px] border border-gray-200 bg-[#f0f4f9]">
+                    <button onclick="toggleModelMenu()" class="p-3.5 hover:bg-gray-200 rounded-full text-gray-500 transition-all flex items-center justify-center">
+                        <i id="currentModelIcon" class="fas fa-graduation-cap"></i>
+                    </button>
+                    
+                    <label class="p-3.5 hover:bg-gray-200 rounded-full cursor-pointer text-gray-500 transition-all flex items-center justify-center">
+                        <i class="fas fa-paperclip"></i>
+                        <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleImageUpload(event)">
+                    </label>
+
+                    <textarea 
+                        id="userInput" 
+                        placeholder="Hỏi Microsl" 
+                        rows="1" 
+                        class="flex-grow bg-transparent border-none focus:ring-0 px-3 py-3 resize-none text-[15px] text-gray-700 max-h-48 outline-none placeholder-gray-400"
+                        oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"
+                    ></textarea>
+
+                    <button id="sendBtn" onclick="handleSend()" class="w-11 h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-all disabled:opacity-40 disabled:scale-95 shadow-md flex items-center justify-center shrink-0 ml-1">
+                        <i class="fas fa-arrow-up text-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <div id="settingsModal" class="fixed inset-0 modal-bg z-50 flex items-center justify-center hidden opacity-0 transition-all duration-300">
+        <div class="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl scale-90 transition-all">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold">Cài đặt</h2>
+                <button onclick="closeModal('settingsModal')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="space-y-4">
+                <button onclick="clearAllHistory()" class="w-full p-4 bg-red-50 text-red-600 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-100 transition">
+                    <i class="fas fa-trash-can"></i> Xóa lịch sử trò chuyện
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="helpModal" class="fixed inset-0 modal-bg z-50 flex items-center justify-center hidden opacity-0 transition-all duration-300">
+        <div class="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl scale-90 transition-all">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold">Trợ giúp</h2>
+                <button onclick="closeModal('helpModal')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            <p class="text-sm text-gray-600 leading-relaxed">Chào An! Đây là Micas. Cậu có thể hỏi bài tập, lập trình, viết văn hoặc bôi đen văn bản để hỏi tớ nhé!</p>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = "AIzaSyBl1sL1xpBBD1Zb26R4fK3P7MwqDkhl5tI"; 
+        const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+
+        let currentImageBase64 = null;
+        let isSidebarCollapsed = false;
+        let chatHistory = [];
+        let selectedModelName = "Pro";
+        let selectedText = "";
+
+        const sidebar = document.getElementById('sidebar');
+        const chatWindow = document.getElementById('chatWindow');
+        const welcomeScreen = document.getElementById('welcomeScreen');
+        const messagesContainer = document.getElementById('messages');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const historyList = document.getElementById('historyList');
+        const modelMenu = document.getElementById('modelMenu');
+        const tooltip = document.getElementById('selectionTooltip');
+
+        document.addEventListener('mouseup', () => {
+            const selection = window.getSelection();
+            const text = selection.toString().trim();
+            if (text.length > 0) {
+                selectedText = text;
+                const range = selection.getRangeAt(0);
+                const rect = range.getBoundingClientRect();
+                tooltip.style.left = `${rect.left + (rect.width / 2) - 60}px`;
+                tooltip.style.top = `${rect.top - 45}px`;
+                tooltip.style.display = 'block';
+            } else {
+                tooltip.style.display = 'none';
+            }
+        });
+
+        function handleSelectionAsk() {
+            if (selectedText) {
+                userInput.value = `Giải thích đoạn văn này cho tớ nhé: "${selectedText}"`;
+                handleSend();
+                tooltip.style.display = 'none';
+                window.getSelection().removeAllRanges();
+            }
+        }
+
+        function toggleSidebar() {
+            isSidebarCollapsed = !isSidebarCollapsed;
+            sidebar.classList.toggle('sidebar-collapsed', isSidebarCollapsed);
+        }
+
+        function toggleModelMenu() {
+            modelMenu.classList.toggle('show');
+        }
+
+        function selectModel(name, icon, color) {
+            selectedModelName = name;
+            document.getElementById('currentModelIcon').className = `fas ${icon} text-${color}-500`;
+            document.getElementById('badgeIcon').className = `fas ${icon} text-${color}-500`;
+            document.getElementById('badgeText').innerText = name;
+            document.getElementById('activeModelBadge').classList.remove('hidden');
+            toggleModelMenu();
+            userInput.focus();
+        }
+
+        function showModal(id) {
+            const m = document.getElementById(id);
+            m.classList.remove('hidden');
+            setTimeout(() => { m.classList.add('opacity-100'); m.querySelector('div').classList.remove('scale-90'); }, 10);
+        }
+
+        function closeModal(id) {
+            const m = document.getElementById(id);
+            m.classList.remove('opacity-100');
+            m.querySelector('div').classList.add('scale-90');
+            setTimeout(() => m.classList.add('hidden'), 300);
+        }
+
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+            }
+        });
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    currentImageBase64 = e.target.result.split(',')[1];
+                    document.getElementById('imagePreview').src = e.target.result;
+                    document.getElementById('imagePreviewContainer').classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function clearImage() {
+            currentImageBase64 = null;
+            document.getElementById('imagePreviewContainer').classList.add('hidden');
+            document.getElementById('fileInput').value = '';
+        }
+
+        function quickPrompt(text) {
+            userInput.value = text;
+            handleSend();
+        }
+
+async function handleSend() {
+    const text = userInput.value.trim();
+    if (!text && !currentImageBase64) return;
+
+    welcomeScreen.classList.add('hidden');
+    messagesContainer.classList.remove('hidden');
+
+    addMessage('user', text, currentImageBase64);
+    userInput.value = '';
+    userInput.style.height = 'auto';
+    clearImage();
+    sendBtn.disabled = true;
+
+    const loadingId = addLoading();
+    
+    try {
+        await chatWithGemini(text, currentImageBase64, loadingId);
+    } catch (error) {
+        updateMessage(loadingId, "Có lỗi xảy ra rồi An ơi! \nChi tiết: " + error.message);
+    } finally {
+        sendBtn.disabled = false;
+        chatWindow.scrollTo(0, chatWindow.scrollHeight);
+    }
+}
+
+        function addMessage(role, text, img = null) {
+            const div = document.createElement('div');
+            div.className = `flex gap-4 fade-in ${role === 'user' ? 'justify-end' : ''}`;
+            div.innerHTML = `
+                <div class="flex flex-col message-bubble ${role === 'user' ? 'items-end' : ''}">
+                    <div class="p-4 rounded-3xl ${role === 'user' ? 'bg-[#f0f4f9] text-gray-800' : 'bg-white shadow-sm border border-gray-100'}">
+                        ${img ? `<img src="data:image/png;base64,${img}" class="max-w-[200px] rounded-xl mb-2">` : ''}
+                        <div class="whitespace-pre-wrap leading-relaxed text-[15px]">${text}</div>
+                    </div>
+                </div>
+            `;
+            messagesContainer.appendChild(div);
+            chatWindow.scrollTo(0, chatWindow.scrollHeight);
+        }
+
+        function addLoading() {
+            const id = 'loading-' + Date.now();
+            const div = document.createElement('div');
+            div.id = id;
+            div.className = 'flex gap-4 fade-in';
+            div.innerHTML = `<div class="p-4"><div class="loading-dots text-blue-500 text-2xl"><span>•</span><span>•</span><span>•</span></div></div>`;
+            messagesContainer.appendChild(div);
+            return id;
+        }
+
+        function updateMessage(id, text) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.innerHTML = `
+                <div class="flex flex-col max-w-[92%] group">
+                    <div class="flex items-center gap-2 mb-1 px-1">
+                        <i class="fas fa-robot text-blue-500 text-[10px]"></i><span class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Micas</span>
+                    </div>
+                    <div class="p-5 rounded-[28px] bg-white border border-gray-100 shadow-sm relative">
+                        <div id="text-${id}" class="whitespace-pre-wrap leading-relaxed text-[15px]">${formatResponse(text)}</div>
+                    </div>
+                    <div class="flex items-center gap-1 mt-2 px-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    </div>
+                </div>
+            `;
+        }
+
+        function formatResponse(t) {
+            return t.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/^- (.*)$/gm, '• $1')
+                    .replace(/\n/g, '<br>')
+                    .replace(/`([^`]+)`/g, '<code class="bg-gray-100 px-1 rounded">$1</code>');
+        }
+
+        async function chatWithGemini(prompt, img, loadingId) {
+            const systemPrompt = `Bạn là Mirocas , trợ lý AI của An. Bạn giỏi lập trình, viết văn, làm toán và yêu thích khoa học , bạn thân thiện và luôn trả lời rõ ràng , hay nhất , chính xác nhất , rõ ràng , dài , xúc tích . 
+            Xưng hô: "tớ" - "cậu". 
+            Phong cách: Thân thiện, vui vẻ, trả lời thông minh, rõ ràng, khoa học, chi tiết nhưng dễ hiểu. 
+            Hướng dẫn An học tập thật tốt, thông tin chính xác.`;
+            const payload = {
+                contents: [{
+                    parts: [{ text: systemPrompt + "\n\nAn nói: " + prompt }]
+                }]
+            };
+
+            if (img) {
+                payload.contents[0].parts.push({
+                    inlineData: { mimeType: "image/png", data: img }
+                });
+            }
+
+            let retries = 3;
+            let delay = 1000;
+            
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const res = await fetch(`${API_URL}?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error?.message || "Lỗi API");
+                    }
+
+                    const data = await res.json();
+                    const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "Tớ đang suy nghĩ một chút, cậu hỏi lại sau giây lát nhé!";
+                    updateMessage(loadingId, aiText);
+                    saveToHistory(prompt);
+                    return;
+                } catch (e) {
+                    if (i === retries - 1) throw e;
+                    await new Promise(r => setTimeout(r, delay));
+                    delay *= 2;
+                }
+            }
+        }
+
+        function copyMsg(id) {
+            const t = document.getElementById(`text-${id}`).innerText;
+            navigator.clipboard.writeText(t);
+        }
+
+        function speakMsg(id) {
+            const t = document.getElementById(`text-${id}`).innerText;
+            const u = new SpeechSynthesisUtterance(t);
+            u.lang = 'vi-VN';
+            window.speechSynthesis.speak(u);
+        }
+
+        function saveToHistory(t) {
+            chatHistory.push({ id: Date.now(), text: t });
+            renderHistory();
+        }
+
+        function renderHistory(f = '') {
+            historyList.innerHTML = '';
+            chatHistory.filter(i => i.text.toLowerCase().includes(f.toLowerCase())).reverse().slice(0, 10).forEach(i => {
+                const d = document.createElement('div');
+                d.className = 'sidebar-item p-3 w-full rounded-xl cursor-pointer text-xs text-gray-600 truncate';
+                d.innerHTML = `<i class="far fa-message mr-2 opacity-50"></i> ${i.text}`;
+                d.onclick = () => { userInput.value = i.text; handleSend(); };
+                historyList.appendChild(d);
+            });
+        }
+
+        function clearAllHistory() { chatHistory = []; renderHistory(); closeModal('settingsModal'); }
+        function filterHistory() { renderHistory(document.getElementById('historySearch').value); }
+        
+        if (window.innerWidth < 1024) toggleSidebar();
+    </script>
+</body>
+</html>
